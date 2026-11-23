@@ -17,6 +17,7 @@
     --button-bg: #efefef;
     --overdue: #c00000;
     --today: #b85c00;
+    --title: #d00000;
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
@@ -30,10 +31,11 @@
     --button-bg: #3a3a3c;
     --overdue: #ff6b6b;
     --today: #ffa94d;
+    --title: #ff5252;
   }
   body { font-family: system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; background: var(--bg); color: var(--text); }
   header { position: relative; }
-  h1 { font-size: 1.5rem; text-align: center; }
+  h1 { font-size: 1.5rem; text-align: center; color: var(--title); }
   #theme { position: absolute; right: 0; top: 0; width: 64px; height: 32px; padding: 0 7px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; line-height: 1; }
   #theme .ico { position: relative; z-index: 1; }
   #theme .knob { position: absolute; top: 2px; left: 2px; width: 26px; height: 26px; border-radius: 50%; background: var(--field-bg); border: 1px solid var(--field-border); box-sizing: border-box; transition: transform 0.2s; }
