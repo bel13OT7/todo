@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Todo</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --text: #111111;
+    --muted: #666666;
+    --done: #888888;
+    --line: #dddddd;
+    --field-bg: #ffffff;
+    --field-border: #999999;
+    --button-bg: #efefef;
+    --overdue: #c00000;
+    --today: #b85c00;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1c1c1e;
+    --text: #eeeeee;
+    --muted: #a0a0a0;
+    --done: #808080;
+    --line: #3a3a3c;
+    --field-bg: #2a2a2c;
+    --field-border: #5a5a5c;
+    --button-bg: #3a3a3c;
+    --overdue: #ff6b6b;
+    --today: #ffa94d;
+  }
+  body { font-family: system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; background: var(--bg); color: var(--text); }
+  header { position: relative; }
+  h1 { font-size: 1.5rem; text-align: center; }
+  #theme { position: absolute; right: 0; top: 0; width: 64px; height: 32px; padding: 0 7px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; line-height: 1; }
+  #theme .ico { position: relative; z-index: 1; }
+  #theme .knob { position: absolute; top: 2px; left: 2px; width: 26px; height: 26px; border-radius: 50%; background: var(--field-bg); border: 1px solid var(--field-border); box-sizing: border-box; transition: transform 0.2s; }
+  :root[data-theme="dark"] #theme .knob { transform: translateX(32px); }
+  input[type=text], input[type=date], select { padding: 8px; font-size: 1rem; background: var(--field-bg); color: var(--text); border: 1px solid var(--field-border); border-radius: 3px; }
+  button { padding: 8px 12px; font-size: 1rem; cursor: pointer; background: var(--button-bg); color: var(--text); border: 1px solid var(--field-border); border-radius: 3px; }
+  #form { display: flex; flex-wrap: wrap; gap: 8px; }
+  #form #input { flex: 1 1 100%; text-align: center; }
+  #form #category { flex: 1 1 120px; min-width: 0; }
+  #form #due { flex: 0 1 auto; min-width: 0; }
+  #filterRow { margin-top: 12px; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  li .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  li .meta { font-size: 0.8rem; color: var(--muted); }
+  li .meta .overdue { color: var(--overdue); font-weight: 600; }
+  li .meta .today { color: var(--today); font-weight: 600; }
+  li .edit-fields { display: flex; flex-wrap: wrap; gap: 4px; }
+  li .edit-fields input, li .edit-fields select { padding: 4px; font-size: 0.95rem; }
+  li .edit-fields .e-text { flex: 1 1 100%; }
+  li.done .text { text-decoration: line-through; color: var(--done); }
+  li button { padding: 2px 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Todo</h1>
+  <button id="theme" type="button" role="switch"><span class="knob"></span><span class="ico">☀️</span><span class="ico">🌙</span></button>
+</header>
+<form id="form">
+  <input type="text" id="input" placeholder="What needs doing?" autocomplete="off">
+  <select id="category" title="Category"></select>
+  <input type="date" id="due" title="Due date (optional)">
+  <button type="submit">Add</button>
+</form>
+<div id="filterRow">
+  <label>Show: <select id="filter"></select></label>
+</div>
+<ul id="list"></ul>
+
+<script>
+  const CATEGORIES = ['Work', 'Personal', 'Others'];
+  const STORAGE_KEY = 'todo-items';
+  const THEME_KEY = 'todo-theme';
+
+  // ---------- theme ----------
+  const themeBtn = document.getElementById('theme');
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    themeBtn.setAttribute('aria-checked', theme === 'dark');
+    themeBtn.title = theme === 'dark' ? 'Dark mode (click for light)' : 'Light mode (click for dark)';
+    themeBtn.setAttribute('aria-label', 'Dark mode');
+  }
+
+  function initialTheme() {
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === 'dark' || stored === 'light') return stored;
+    } catch (e) { /* ignore */ }
+    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  themeBtn.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
+  });
+
+  applyTheme(initialTheme());
+
+  // ---------- storage ----------
+  function load() {
+    try {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (!Array.isArray(data)) return [];
+      // Older items may have a free-text category: fold anything unknown into "Others".
+      data.forEach((t) => {
+        if (t.category && !CATEGORIES.includes(t.category)) t.category = 'Others';
+      });
+      return data;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+    } catch (e) { /* storage unavailable: keep working in memory */ }
+  }
+
+  let todos = load();
+  let nextId = todos.reduce((max, t) => Math.max(max, t.id), 0) + 1;
+  let editingId = null;
+  let filterValue = '';
+
+  // ---------- elements ----------
+  const form = document.getElementById('form');
+  const input = document.getElementById('input');
+  const categoryInput = document.getElementById('category');
+  const dueInput = document.getElementById('due');
+  const filter = document.getElementById('filter');
+  const list = document.getElementById('list');
+
+  function fillSelect(select, options) {
+    options.forEach(([value, label]) => {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      select.appendChild(o);
+    });
+  }
+
+  fillSelect(categoryInput, [['', 'Category'], ...CATEGORIES.map((c) => [c, c])]);
+  fillSelect(filter, [['', 'All'], ...CATEGORIES.map((c) => [c, c])]);
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    todos.push({
+      id: nextId++,
+      text,
+      category: categoryInput.value,
+      due: dueInput.value, // 'YYYY-MM-DD' or ''
+      done: false,
+    });
+    input.value = '';
+    categoryInput.value = '';
+    dueInput.value = '';
+    render();
+  });
+
+  filter.addEventListener('change', () => { filterValue = filter.value; render(); });
+
+  function todayStr() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function render() {
+    save();
+    list.innerHTML = '';
+    const today = todayStr();
+
+    // Undone first, then earliest due date first (no date last), then oldest added.
+    const byDue = (a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      if (a.due !== b.due) {
+        if (!a.due) return 1;
+        if (!b.due) return -1;
+        return a.due < b.due ? -1 : 1;
+      }
+      return a.id - b.id;
+    };
+
+    todos
+      .slice()
+      .sort(byDue)
+      .filter((t) => !filterValue || t.category === filterValue)
+      .forEach((t) => {
+        const li = document.createElement('li');
+        if (t.done) li.className = 'done';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = t.done;
+        cb.onchange = () => { t.done = cb.checked; render(); };
+
+        const editing = t.id === editingId;
+        const main = document.createElement('div');
+        main.className = 'main';
+        let getValues = null;
+
+        const saveEdit = () => {
+          const v = getValues();
+          if (v.text) t.text = v.text;
+          t.category = v.category;
+          t.due = v.due;
+          editingId = null;
+          render();
+        };
+
+        if (editing) {
+          const fields = document.createElement('div');
+          fields.className = 'edit-fields';
+
+          const eText = document.createElement('input');
+          eText.type = 'text';
+          eText.className = 'e-text';
+          eText.value = t.text;
+
+          const eCat = document.createElement('select');
+          fillSelect(eCat, [['', 'Category'], ...CATEGORIES.map((c) => [c, c])]);
+          eCat.value = t.category;
+
+          const eDue = document.createElement('input');
+          eDue.type = 'date';
+          eDue.value = t.due;
+
+          [eText, eCat, eDue].forEach((el) => {
+            el.onkeydown = (e) => {
+              if (e.key === 'Enter') saveEdit();
+              if (e.key === 'Escape') { editingId = null; render(); }
+            };
+          });
+
+          getValues = () => ({
+            text: eText.value.trim(),
+            category: eCat.value,
+            due: eDue.value,
+          });
+          fields.append(eText, eCat, eDue);
+          main.appendChild(fields);
+          setTimeout(() => eText.focus(), 0);
+        } else {
+          const text = document.createElement('span');
+          text.className = 'text';
+          text.textContent = t.text;
+          main.appendChild(text);
+
+          const meta = document.createElement('span');
+          meta.className = 'meta';
+          if (t.category) meta.append(t.category + ' · ');
+
+          const due = document.createElement('span');
+          if (!t.due) {
+            due.textContent = 'No due date';
+          } else {
+            const days = Math.round((new Date(t.due + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
+            let note = '';
+            if (!t.done && days < 0) { due.className = 'overdue'; note = ' (overdue by ' + -days + (days === -1 ? ' day)' : ' days)'); }
+            else if (!t.done && days === 0) { due.className = 'today'; note = ' (today)'; }
+            else if (!t.done && days === 1) note = ' (tomorrow)';
+            due.textContent = 'Due ' + t.due + note;
+          }
+          meta.appendChild(due);
+          main.appendChild(meta);
+        }
+
+        const edit = document.createElement('button');
+        edit.textContent = editing ? 'Save' : '✏️';
+        edit.title = editing ? 'Save' : 'Edit';
+        edit.setAttribute('aria-label', edit.title);
+        edit.onclick = () => {
+          if (editing) saveEdit();
+          else { editingId = t.id; render(); }
+        };
+
+        const del = document.createElement('button');
+        del.textContent = '🗑️';
+        del.title = 'Delete';
+        del.setAttribute('aria-label', 'Delete');
+        del.onclick = () => { todos = todos.filter((x) => x.id !== t.id); render(); };
+
+        li.append(cb, main, edit, del);
+        list.appendChild(li);
+      });
+  }
+
+  render();
+</script>
+</body>
+</html>
